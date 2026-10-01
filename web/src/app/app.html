@@ -1,0 +1,29 @@
+@if (!g.ready()) {
+  <main class="splash">
+    <div>
+      <h1>A Resistência</h1>
+      @if (g.connecting()) {
+        <p class="muted">Conectando…</p>
+        <div class="spinner"></div>
+      } @else {
+        <p class="muted">Não foi possível conectar ao servidor.</p>
+        @if (g.initError(); as e) { <p class="muted"><code>{{ e }}</code></p> }
+        <p class="muted small">Confira se "Allow anonymous sign-ins" está ligado no Supabase.</p>
+        <button class="btn primary" (click)="g.init()">Tentar de novo</button>
+      }
+    </div>
+  </main>
+} @else if (!g.room()) {
+  <app-home />
+} @else if (g.room()!.phase === 'lobby') {
+  <app-lobby />
+} @else {
+  <app-game />
+}
+
+@if (g.error(); as err) {
+  <div class="toast" role="alert">
+    <span>{{ err }}</span>
+    <button class="btn small ghost" (click)="g.dismissError()" aria-label="Fechar">✕</button>
+  </div>
+}

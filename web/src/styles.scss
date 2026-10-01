@@ -46,6 +46,8 @@ input[type='range'] { accent-color: var(--lead); width: 100%; }
 
 .mc-panel { display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 22px; background: var(--panel); border: 1px solid var(--line);
   box-shadow: inset 0 1px 0 oklch(1 0 0 / .07); backdrop-filter: blur(14px); }
+// Aparelho fraco ou queda de fps (classe posta pelo mc-engine): sem desfoque sobre o fundo animado.
+.mc-lite .mc-panel { backdrop-filter: none; background: oklch(0.15 0.012 250 / .94); }
 
 // Botões. Todos ≥ 44px de alvo.
 .mc-btn {

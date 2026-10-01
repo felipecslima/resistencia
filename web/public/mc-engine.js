@@ -93,6 +93,7 @@
     tick() {
       const c = this.ctx;
       if (!c || c.state !== 'running') return;
+      if (this.next < c.currentTime) this.next = c.currentTime; // relógio saltou (ex.: volta do modo de espera)
       while (this.next < c.currentTime + 0.2) {
         const t = this.t;
         if (t > 0.18) this.kick(this.next, 0.03 + t * 0.1, this.mBus);
@@ -169,18 +170,26 @@
     constructor(cv) {
       this.cv = cv; this.g = cv.getContext('2d'); this.t = 0.15; this.tt = 0.15; this.reduced = false; this.low = EST.lowEnd;
       this.bursts = []; this.staticT = 0; this.staticD = 1; this.fps = 60; this.fr = 0; this.fl = performance.now();
+      // qualidade adaptativa: 0 = completa, 1 = sem granulado nem desfoque dos painéis, 2 = também 30 fps e resolução 1x
+      this.q = this.low ? 1 : 0; this.slow = 0; this.skip = false; this.applyQ();
       const N = this.low ? 36 : 110;
       this.p = Array.from({ length: N }, () => ({ x: Math.random(), y: Math.random(), z: 0.25 + Math.random() * 0.75, ph: Math.random() * 6.28, s: 0.4 + Math.random() }));
       this.grain = this.mkGrain();
       this.resize();
-      this.onResize = () => this.resize(); addEventListener('resize', this.onResize);
-      this.onVis = () => { if (!document.hidden) { this.last = performance.now(); this.loop(); } };
+      // no celular a barra de endereço dispara resize ao rolar: ignora variações pequenas só de altura e agrupa o resto
+      this.onResize = () => {
+        if (innerWidth === this.w && Math.abs(innerHeight - this.h) < 160) return;
+        clearTimeout(this.rzT); this.rzT = setTimeout(() => this.resize(), 150);
+      };
+      addEventListener('resize', this.onResize);
+      this.onVis = () => { if (!document.hidden) { this.last = this.fl = performance.now(); this.fr = 0; this.loop(); } };
       document.addEventListener('visibilitychange', this.onVis);
       this.last = performance.now(); this.loop();
     }
-    destroy() { cancelAnimationFrame(this.raf); removeEventListener('resize', this.onResize); document.removeEventListener('visibilitychange', this.onVis); this.dead = true; }
+    applyQ() { document.documentElement.classList.toggle('mc-lite', this.q >= 1); }
+    destroy() { cancelAnimationFrame(this.raf); clearTimeout(this.rzT); removeEventListener('resize', this.onResize); document.removeEventListener('visibilitychange', this.onVis); this.dead = true; }
     setTension(t) { this.tt = t; }
-    resize() { const d = Math.min(devicePixelRatio || 1, this.low ? 1 : 1.5); this.d = d; this.w = innerWidth; this.h = innerHeight; this.cv.width = this.w * d; this.cv.height = this.h * d; this.pat = null; }
+    resize() { const d = Math.min(devicePixelRatio || 1, this.low || this.q >= 2 ? 1 : 1.5); this.d = d; this.w = innerWidth; this.h = innerHeight; this.cv.width = this.w * d; this.cv.height = this.h * d; this.pat = null; }
     mkGrain() {
       const c = document.createElement('canvas'); c.width = c.height = 128;
       const x = c.getContext('2d'), im = x.createImageData(128, 128);
@@ -195,8 +204,15 @@
       g.fillStyle = gr; g.beginPath(); g.moveTo(0, -wid * 0.12); g.lineTo(len, -wid); g.lineTo(len, wid); g.lineTo(0, wid * 0.12); g.fill(); g.restore();
     }
     frame(now) {
+      this.fr++;
+      if (now - this.fl > 1000) {
+        this.fps = Math.round((this.fr * 1000) / (now - this.fl)); this.fr = 0; this.fl = now;
+        // 3 s seguidos abaixo de 48 fps: desce um nível de qualidade (não sobe de volta, para não oscilar)
+        this.slow = this.fps < 48 ? this.slow + 1 : 0;
+        if (this.slow >= 3 && this.q < 2) { this.q++; this.slow = 0; this.applyQ(); if (this.q === 2) this.resize(); }
+      }
+      if (this.q >= 2) { this.skip = !this.skip; if (this.skip) return; }
       const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now;
-      this.fr++; if (now - this.fl > 1000) { this.fps = Math.round((this.fr * 1000) / (now - this.fl)); this.fr = 0; this.fl = now; }
       this.t += (this.tt - this.t) * Math.min(1, dt * 1.5);
       const g = this.g, d = this.d, W = this.w, H = this.h, t = this.t, M = Math.max(W, H);
       g.setTransform(d, 0, 0, d, 0, 0); g.clearRect(0, 0, W, H);
@@ -232,7 +248,7 @@
         if (!this.reduced) for (let i = 0; i < 4; i++) { g.fillStyle = `rgba(255,255,255,${0.07 * k})`; g.fillRect(0, Math.random() * H, W, 2 + Math.random() * 12); }
         g.globalAlpha = 1;
       }
-      if (!this.low) {
+      if (this.q === 0) {
         g.globalAlpha = 0.025 + t * 0.025;
         const ox = this.reduced ? 0 : (Math.random() * 128) | 0, oy = this.reduced ? 0 : (Math.random() * 128) | 0;
         g.translate(-ox, -oy); g.fillStyle = this.pat; g.fillRect(0, 0, W + 128, H + 128); g.setTransform(d, 0, 0, d, 0, 0);

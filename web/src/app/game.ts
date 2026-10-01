@@ -343,6 +343,8 @@ export class Game {
   protected commit(ok: boolean): void { this.audio.vote(); this.fx.vib(15); void this.g.playMission(ok); }
   protected strike(): void { const [t] = [...this.selection()]; if (t) void this.g.assassinate(t); }
   protected replay(): void { this.current.set(null); void this.g.reset(); }
+  /** Host encerra a partida travada (ex.: jogador caiu) e todos voltam ao lobby, onde dá para removê-lo. */
+  protected abort(): void { this.confirmLeave.set(false); this.replay(); }
   protected async leave(): Promise<void> { this.confirmLeave.set(false); await this.g.leave(); }
 
   protected setTab(t: SideTab): void { this.audio.ui(); this.tab.set(t); }

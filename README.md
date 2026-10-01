@@ -41,3 +41,4 @@ animações de revelação, sons (sintetizados, sem arquivos) e aviso "Sua vez" 
 
 Salas não são apagadas automaticamente. Para limpar (pg_cron ou manualmente):
 `delete from rooms where created_at < now() - interval '2 days';`
+# resistencia

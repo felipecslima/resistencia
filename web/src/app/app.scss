@@ -1,4 +1,10 @@
-.splash { min-height: 100vh; display: grid; place-items: center; text-align: center; padding: 24px; }
-.splash h1 { font-size: 34px; margin-bottom: 8px; }
-.spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--gold); animation: spin 0.8s linear infinite; margin: 18px auto 0; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.splash { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center; }
+.splash h1 { font-family: var(--display); font-variation-settings: 'wdth' 150, 'wght' 900; font-size: clamp(32px, 9vw, 48px); text-transform: uppercase; line-height: .9; }
+.splash h1 span { display: block; color: var(--lead); font-variation-settings: 'wdth' 150, 'wght' 300; letter-spacing: .2em; font-size: .62em; }
+.status { margin: 0; color: var(--team); font-size: 14px; }
+.status.err { color: oklch(0.84 0.13 25); }
+.caret { display: inline-block; width: .6em; height: 1em; margin-left: 4px; vertical-align: -2px; background: currentColor; animation: blink 1s steps(2) infinite; }
+.spinner { width: 34px; height: 34px; border-radius: 50%; border: 2px solid oklch(0.85 0.12 195 / .25); border-top-color: var(--lead); animation: spin .9s linear infinite; }
+code { font-family: var(--mono); font-size: 12px; color: var(--muted-1); max-width: 40ch; word-break: break-word; }
+.hint { margin: 0; font-size: 14px; color: var(--muted-1); max-width: 36ch; }
+@keyframes blink { 50% { opacity: 0; } }

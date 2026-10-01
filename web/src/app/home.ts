@@ -1,83 +1,125 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, ElementRef, afterNextRender, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { GameService } from './game.service';
+import { AudioService } from './mc/audio.service';
+import { FxService } from './mc/fx.service';
+import { Icon, Logo } from './mc/ui';
 
 @Component({
   selector: 'app-home',
-  imports: [FormsModule],
+  imports: [FormsModule, Logo, Icon],
   template: `
-    <main class="wrap hero">
-      <header class="brand">
-        <div class="logo" aria-hidden="true">✊</div>
-        <h1>A Resistência</h1>
-        <p class="muted">Dedução social em tempo real para 5 a 10 jogadores. Descubra os espiões antes que sabotem tudo.</p>
+    <main class="home">
+      <header>
+        <mc-logo #logo [size]="92" />
+        <h1>
+          <span class="m">Merge</span>
+          <span class="c">Conflict</span>
+        </h1>
+        <p>Dedução social em tempo real para 5 a 10 devs. Alguém no time está plantando bugs. Descubra quem antes do deploy.</p>
       </header>
 
-      <section class="panel stack card">
-        <label class="stack small">
-          <span class="muted">Seu nome</span>
-          <input class="input" maxlength="20" placeholder="Como você quer ser chamado?" [(ngModel)]="name" (ngModelChange)="saveName()" autocomplete="nickname" />
+      <section class="mc-panel">
+        <label class="field">
+          <span class="eyebrow">git config user.name</span>
+          <input class="mc-input" maxlength="20" placeholder="Como você quer ser chamado?" [(ngModel)]="name" (ngModelChange)="saveName()" autocomplete="nickname" />
         </label>
 
-        <button class="btn primary big" [disabled]="!validName() || g.busy()" (click)="create()">Criar sala</button>
+        <button class="mc-btn primary big" [disabled]="!validName() || g.busy()" (click)="create()">
+          <mc-icon name="git" [stroke]="2.2" /> Criar repositório
+        </button>
 
-        <div class="divider"><span>ou entre em uma sala</span></div>
+        <div class="divider"><span></span>ou clone uma sala<span></span></div>
 
-        <form class="row" (ngSubmit)="join()">
-          <input class="input code grow" name="code" maxlength="5" placeholder="CÓDIGO" [(ngModel)]="code" (ngModelChange)="code = code.toUpperCase()" autocapitalize="characters" autocomplete="off" />
-          <button class="btn" type="submit" [disabled]="!validName() || code.length < 5 || g.busy()">Entrar</button>
+        <form class="join" (ngSubmit)="join()">
+          <input class="mc-input code" name="code" maxlength="5" placeholder="CÓDIGO" aria-label="Código da sala" [(ngModel)]="code"
+            (ngModelChange)="code = $event.toUpperCase().replace(regex, '')" autocapitalize="characters" autocomplete="off" />
+          <button class="mc-btn outline-team" type="submit" [disabled]="!validName() || code.length < 5 || g.busy()">Entrar</button>
         </form>
 
         @if (g.resumable()) {
-          <button class="btn good" (click)="g.resume()">Voltar para a partida em andamento</button>
+          <button class="mc-btn team" (click)="g.resume()">Voltar para a partida em andamento</button>
         }
       </section>
 
-      <section class="panel rules">
-        <button class="rules-toggle" (click)="showRules.set(!showRules())" [attr.aria-expanded]="showRules()">
-          <b>Como jogar</b><span>{{ showRules() ? '−' : '+' }}</span>
+      <section class="rules">
+        <button class="rules-toggle" (click)="toggleRules()" [attr.aria-expanded]="showRules()">
+          <span>README · Como jogar</span>
+          <span class="plus" [class.open]="showRules()"><mc-icon name="plus" [size]="18" /></span>
         </button>
         @if (showRules()) {
           <div class="rules-body">
-            <p>Cada jogador recebe em segredo um papel: <b>Resistência</b> ou <b>Espião</b>. Os espiões se conhecem; a Resistência não sabe quem é quem.</p>
-            <p>O jogo tem até 5 missões. A cada rodada o <b>líder</b> propõe uma equipe e todos votam (maioria aprova). Se 5 equipes seguidas forem rejeitadas, os espiões vencem.</p>
-            <p>Com a equipe aprovada, cada membro joga uma carta em segredo: a Resistência só pode jogar <b>Sucesso</b>, espiões escolhem entre Sucesso e <b>Falha</b>. Uma única Falha derruba a missão (na 4ª missão com 7+ jogadores são necessárias 2 Falhas).</p>
-            <p>Quem conquistar 3 missões vence. Com o <b>Comandante</b> ligado, se a Resistência vencer, o <b>Assassino</b> ainda pode apontar o Comandante para roubar a vitória.</p>
+            <p>Cada jogador recebe em segredo um papel: <b>Dev</b> ou <b>Sabotador</b>. Os sabotadores se conhecem; os devs não sabem quem é quem.</p>
+            <p>O jogo tem até 5 releases. A cada rodada o <b>lead</b> abre um PR com uma equipe e todos fazem o code review (maioria aprova). Se 5 PRs seguidos forem recusados, o deadline estoura e os sabotadores vencem.</p>
+            <p>Com o PR aprovado, cada membro faz um commit em segredo: devs só fazem <b>commit limpo</b>, sabotadores escolhem entre limpo e <b>plantar um bug</b>. Um único bug quebra o build (no release 4 com 7+ jogadores são necessários 2 bugs).</p>
+            <p>Quem fechar 3 releases vence. Com o <b>Tech Lead</b> ligado, se os devs vencerem, o <b>Headhunter</b> ainda pode apontar o Tech Lead para roubar a vitória.</p>
           </div>
         }
       </section>
     </main>
   `,
   styles: [`
-    .hero { max-width: 520px; padding-top: 7vh; display: flex; flex-direction: column; gap: 16px; }
-    .brand { text-align: center; margin-bottom: 4px; animation: fadeUp 0.5s ease; }
-    .brand h1 { font-size: clamp(32px, 9vw, 44px); }
-    .brand p { margin: 8px auto 0; max-width: 40ch; }
-    .logo { font-size: 44px; width: 84px; height: 84px; margin: 0 auto 12px; display: grid; place-items: center; border-radius: 24px;
-      background: linear-gradient(145deg, #1d3a56, #3a1620); border: 1px solid var(--line); box-shadow: var(--shadow); }
-    .card { animation: fadeUp 0.5s ease 0.08s backwards; }
-    .small { font-size: 14px; }
-    .code { text-align: center; letter-spacing: 0.4em; font-weight: 700; font-size: 20px; text-transform: uppercase; }
-    .divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; }
-    .divider::before, .divider::after { content: ''; height: 1px; background: var(--line); flex: 1; }
-    .rules { padding: 0; }
-    .rules-toggle { all: unset; box-sizing: border-box; width: 100%; padding: 16px; display: flex; justify-content: space-between; cursor: pointer; }
-    .rules-body { padding: 0 16px 8px; color: #c4d0df; font-size: 15px; }
+    .home { max-width: 470px; margin: 0 auto; padding: clamp(36px, 9vh, 96px) 20px 80px; display: flex; flex-direction: column; gap: 28px; }
+    header { display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center; }
+    h1 { display: flex; flex-direction: column; align-items: center; gap: 2px; font-family: var(--display); line-height: .86; text-transform: uppercase; }
+    .m { font-size: clamp(48px, 15vw, 74px); font-variation-settings: 'wdth' 150, 'wght' 900; letter-spacing: .01em; }
+    .c { font-size: clamp(30px, 9.4vw, 46px); font-variation-settings: 'wdth' 150, 'wght' 300; letter-spacing: .2em; color: var(--lead);
+      text-shadow: -2px 0 oklch(0.72 0.19 22 / .7), 2px 0 oklch(0.85 0.12 195 / .7); }
+    header p { margin: 0; color: oklch(0.82 0.015 250); max-width: 34ch; line-height: 1.5; text-wrap: pretty; }
+    .mc-panel { gap: 16px; padding: 22px; box-shadow: 0 30px 80px -24px #000, inset 0 1px 0 oklch(1 0 0 / .07); }
+    .field { display: flex; flex-direction: column; gap: 8px; }
+    .divider { display: flex; align-items: center; gap: 12px; color: var(--muted-2); font-size: 13px; }
+    .divider span { flex: 1; height: 1px; background: oklch(0.42 0.025 250 / .5); }
+    .join { display: flex; gap: 10px; }
+    .code { flex: 1 1 auto; min-width: 0; color: oklch(0.86 0.14 80); padding: 14px 12px; font-family: var(--mono); font-weight: 700; font-size: 20px; letter-spacing: .4em; text-align: center; text-transform: uppercase; }
+    .join .mc-btn { min-height: 52px; flex: none; }
+    .rules { border-radius: 18px; border: 1px solid oklch(0.42 0.025 250 / .45); background: oklch(0.15 0.012 250 / .65); overflow: hidden; }
+    .rules-toggle { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 16px 18px; min-height: 52px; background: none; border: 0; }
+    .rules-toggle:hover { background: oklch(1 0 0 / .03); }
+    .rules-toggle > span:first-child { font-family: var(--display); font-variation-settings: 'wdth' 120, 'wght' 700; letter-spacing: .16em; text-transform: uppercase; font-size: 13px; }
+    .plus { display: grid; transition: transform 340ms var(--ease-spring); }
+    .plus.open { transform: rotate(45deg); }
+    .rules-body { padding: 0 18px 12px; color: oklch(0.87 0.012 250); font-size: 15px; line-height: 1.55; text-wrap: pretty; }
     .rules-body p { margin: 0 0 12px; }
   `],
 })
 export class Home {
   protected readonly g = inject(GameService);
+  private readonly audio = inject(AudioService);
+  private readonly fx = inject(FxService);
+  private readonly logo = viewChild.required(Logo, { read: ElementRef });
+  protected readonly regex = /[^A-Z0-9]/g;
   protected name = this.loadName();
   protected code = new URLSearchParams(location.search).get('sala')?.toUpperCase().slice(0, 5) ?? '';
   protected readonly showRules = signal(false);
 
+  constructor() {
+    afterNextRender(() => this.animateLogo(this.logo().nativeElement as HTMLElement));
+  }
+
   protected validName(): boolean { return this.name.trim().length >= 1; }
   protected saveName(): void { try { localStorage.setItem('resistencia.name', this.name); } catch { /* ignora */ } }
-  protected async create(): Promise<void> { await this.g.create(this.name.trim()); }
+  protected toggleRules(): void { this.audio.ui(); this.showRules.update((v) => !v); }
+  protected async create(): Promise<void> { this.audio.lock(); await this.g.create(this.name.trim()); }
   protected async join(): Promise<void> {
     if (!this.validName() || this.code.length < 5) return;
+    this.audio.lock();
     await this.g.join(this.code, this.name.trim());
   }
   private loadName(): string { try { return localStorage.getItem('resistencia.name') ?? ''; } catch { return ''; } }
+
+  /** Desenha as duas branches, o tronco e faz o commit "pular". Branch coral pisca em glitch. */
+  private animateLogo(root: HTMLElement): void {
+    const q = (k: string) => root.querySelector(`[data-${k}]`), full = this.fx.full();
+    const draw = (el: Element | null, delay: number, dur: number) => el?.animate([{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], { duration: full ? dur : 1, delay: full ? delay : 0, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'both' });
+    draw(q('a'), 100, 700); draw(q('b')?.firstElementChild ?? null, 260, 700); draw(q('c'), 900, 400);
+    q('d')?.animate([{ transform: 'scale(0)', opacity: 0 }, { transform: 'scale(1.35)', opacity: 1, offset: 0.6 }, { transform: 'scale(1)', opacity: 1 }], { duration: full ? 600 : 1, delay: full ? 900 : 0, easing: 'cubic-bezier(.34,1.56,.64,1)', fill: 'both' });
+    const b = q('b');
+    if (!b || !full) return;
+    const id = setInterval(() => {
+      if (!b.isConnected) return clearInterval(id);
+      if (document.hidden) return;
+      b.animate([{ transform: 'none' }, { transform: 'translate(2px,-1px)' }, { transform: 'translate(-3px,1px)', opacity: 0.4 }, { transform: 'translate(1px,0)' }, { transform: 'none' }], { duration: 260, easing: 'steps(4)' });
+    }, 2600);
+  }
 }

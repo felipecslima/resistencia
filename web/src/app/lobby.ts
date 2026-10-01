@@ -1,126 +1,171 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { GameService } from './game.service';
-import { SoundService } from './sound.service';
+import { AudioService } from './mc/audio.service';
 import { ChatPanel } from './chat-panel';
-import { RoomOptions, spyCount } from './models';
+import { RoleKey, RoomOptions, spyCount } from './models';
+import { Icon, RoleEmblem, Sigil } from './mc/ui';
+import { sigil } from './mc/theme';
 
-interface OptionDef { key: keyof RoomOptions; title: string; text: string; needs?: keyof RoomOptions; }
+interface OptionDef { key: keyof RoomOptions; role: RoleKey; title: string; text: string; }
 
 @Component({
   selector: 'app-lobby',
-  imports: [ChatPanel],
+  imports: [ChatPanel, Icon, RoleEmblem, Sigil],
   template: `
-    <main class="wrap">
+    <main class="lobby">
       <header class="head">
-        <div>
-          <div class="muted small">Código da sala</div>
-          <div class="code">{{ room().code }}</div>
+        <div class="code-box">
+          <span class="eyebrow">Repositório da sala</span>
+          <span class="code">{{ room().code }}</span>
         </div>
-        <div class="row">
-          <button class="btn small" (click)="copy()">{{ copied() ? 'Link copiado!' : 'Copiar link' }}</button>
-          <button class="btn small ghost" (click)="sound.toggle()" [attr.aria-label]="sound.muted() ? 'Ativar som' : 'Silenciar'">{{ sound.muted() ? '🔇' : '🔊' }}</button>
-          <button class="btn small ghost" (click)="g.leave()">Sair</button>
+        <div class="tools">
+          <button class="mc-btn" (click)="copy()"><mc-icon name="link" [size]="18" /> {{ copied() ? 'Link copiado!' : 'Copiar convite' }}</button>
+          <button class="mc-btn icon" (click)="audio.toggle()" [attr.aria-label]="audio.muted() ? 'Ativar som' : 'Silenciar'" [attr.aria-pressed]="audio.muted()">
+            <span class="vol"><mc-icon name="speaker" /><mc-icon [name]="audio.muted() ? 'mutedX' : 'waves'" /></span>
+          </button>
+          <button class="mc-btn ghost danger" (click)="g.leave()">Sair</button>
         </div>
       </header>
 
       <div class="cols">
-        <section class="panel stack">
-          <div class="row between">
-            <h2>Jogadores ({{ g.players().length }}/10)</h2>
-            <span class="chip" [class.good]="canStart()" [class.bad]="!canStart()">{{ g.players().length < 5 ? 'Faltam ' + (5 - g.players().length) : 'Pronto para começar' }}</span>
+        <section class="mc-panel">
+          <div class="row">
+            <h2 class="h-section">Contribuidores {{ n() }}/10</h2>
+            <span class="chip" [class.team]="n() >= 5" [class.sab]="n() < 5">{{ n() < 5 ? 'Faltam ' + (5 - n()) : 'Pronto para começar' }}</span>
           </div>
           <ul class="players">
             @for (p of g.sorted(); track p.id) {
               <li [class.me]="p.id === g.me()?.id">
-                <span class="dot" [class.on]="g.online().has(p.id)" [attr.title]="g.online().has(p.id) ? 'Online' : 'Offline'"></span>
-                <span class="name">{{ p.name }}</span>
-                @if (p.user_id === room().host_user) { <span class="chip gold">👑 Anfitrião</span> }
-                @if (p.id === g.me()?.id) { <span class="chip">você</span> }
+                <span class="av">
+                  <mc-sigil [name]="p.name" [size]="40" />
+                  <i class="dot" [class.on]="g.online().has(p.id)" [attr.title]="g.online().has(p.id) ? 'Online' : 'Offline'"></i>
+                </span>
+                <span class="who">
+                  <span class="nm">{{ p.name }}</span>
+                  <span class="sub" [class.host]="p.user_id === room().host_user">
+                    {{ p.user_id === room().host_user ? 'host' : hex(p.name) }}{{ p.id === g.me()?.id ? ' · você' : '' }}{{ g.online().has(p.id) ? '' : ' · offline' }}
+                  </span>
+                </span>
                 @if (g.isHost() && p.id !== g.me()?.id) {
-                  <button class="btn small ghost kick" (click)="g.kick(p.id)" [attr.aria-label]="'Remover ' + p.name">Remover</button>
+                  <button class="kick" (click)="g.kick(p.id)" [attr.aria-label]="'Remover ' + p.name"><mc-icon name="mutedX" [size]="16" /></button>
                 }
               </li>
             }
           </ul>
-          @if (g.players().length >= 5) {
-            <p class="muted small">Com {{ g.players().length }} jogadores: {{ spies() }} espiões e {{ g.players().length - spies() }} membros da Resistência.</p>
-          }
+          <p class="comp">{{ n() >= 5 ? 'Com ' + n() + ' jogadores: ' + spies() + ' sabotadores e ' + (n() - spies()) + ' devs.' : 'Mínimo de 5 jogadores. Mande o convite.' }}</p>
         </section>
 
-        <section class="panel stack">
-          <h2>Papéis especiais</h2>
+        <section class="mc-panel">
+          <h2 class="h-section">Papéis especiais</h2>
           @for (o of defs; track o.key) {
-            <label class="opt" [class.off]="!g.isHost()">
-              <input type="checkbox" [checked]="room().options[o.key]" [disabled]="!g.isHost()" (change)="toggle(o.key, $any($event.target).checked)" />
-              <span><b>{{ o.title }}</b><br /><span class="muted small">{{ o.text }}</span></span>
-            </label>
+            <button class="opt" role="switch" [attr.aria-checked]="room().options[o.key]" [class.on]="room().options[o.key]" [disabled]="!g.isHost()" (click)="toggle(o.key)">
+              <mc-emblem [role]="o.role" [size]="40" />
+              <span class="t"><b>{{ o.title }}</b><span>{{ o.text }}</span></span>
+              <span class="sw" aria-hidden="true"><i></i></span>
+            </button>
           }
-          @if (optionError()) { <p class="err small">{{ optionError() }}</p> }
+          @if (optionError()) { <p class="err">{{ optionError() }}</p> }
           @if (g.isHost()) {
-            <button class="btn primary big" [disabled]="!canStart() || g.busy()" (click)="g.start()">Começar partida</button>
+            <button class="mc-btn primary big" [disabled]="!canStart() || g.busy()" (click)="start()">git push --start</button>
           } @else {
-            <p class="muted">Aguardando o anfitrião começar a partida…</p>
+            <p class="comp">Aguardando o host começar a partida…</p>
           }
         </section>
 
-        <section class="panel chatbox">
-          <h2>Chat</h2>
+        <section class="mc-panel chatbox">
+          <h2 class="h-section">#geral</h2>
           <app-chat />
         </section>
       </div>
     </main>
   `,
   styles: [`
-    .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
-    .code { font-size: 38px; font-weight: 800; letter-spacing: 0.25em; color: var(--gold); line-height: 1; }
-    .small { font-size: 14px; }
-    .between { justify-content: space-between; }
-    .cols { display: grid; gap: 14px; grid-template-columns: 1fr; animation: fadeUp 0.35s ease; }
-    @media (min-width: 900px) { .cols { grid-template-columns: 1fr 1fr; } .chatbox { grid-column: 1 / -1; } }
-    .players { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-    .players li { display: flex; align-items: center; gap: 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; flex-wrap: wrap; }
-    .players li.me { border-color: #355070; }
-    .name { font-weight: 600; flex: 1 1 auto; word-break: break-word; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; background: #455468; flex: none; }
-    .dot.on { background: var(--good); box-shadow: 0 0 8px var(--good); }
-    .kick { color: var(--bad); }
-    .opt { display: flex; gap: 12px; align-items: flex-start; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel2); cursor: pointer; }
-    .opt.off { cursor: default; opacity: 0.85; }
-    .opt input { margin-top: 5px; width: 18px; height: 18px; accent-color: #f3c14f; flex: none; }
-    .err { color: var(--bad); margin: 0; }
+    .lobby { max-width: 1080px; margin: 0 auto; padding: 22px 16px 60px; display: flex; flex-direction: column; gap: 18px; }
+    .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+    .code-box { display: flex; flex-direction: column; gap: 6px; }
+    .code { font-family: var(--mono); font-weight: 800; font-size: clamp(42px, 12vw, 64px); letter-spacing: .18em; line-height: 1; color: oklch(0.86 0.14 80); text-shadow: 0 0 28px oklch(0.85 0.14 80 / .45); }
+    .tools { display: flex; gap: 10px; flex-wrap: wrap; }
+    .vol { display: grid; } .vol > * { grid-area: 1 / 1; }
+    .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 16px; }
+    .chatbox { grid-column: 1 / -1; }
+    .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .players { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+    .players li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 14px; background: oklch(0.12 0.01 250 / .75); border: 1px solid oklch(0.42 0.025 250 / .45); min-width: 0; }
+    .players li.me { border-color: oklch(0.85 0.14 80 / .6); }
+    .av { position: relative; flex: none; }
+    .dot { position: absolute; right: -1px; bottom: 1px; width: 11px; height: 11px; border-radius: 50%; background: oklch(0.45 0.02 250); border: 2px solid #0b0d12; }
+    .dot.on { background: var(--team); box-shadow: 0 0 8px var(--team); }
+    .who { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+    .nm { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sub { font-size: 12px; font-family: var(--mono); color: var(--muted-2); }
+    .sub.host { color: var(--lead); }
+    .kick { flex: none; width: 44px; height: 44px; margin: -8px -6px -8px 0; display: grid; place-items: center; border: 0; background: none; border-radius: 10px; color: var(--muted-2); }
+    .kick:hover { color: var(--sabotage); background: oklch(0.72 0.19 22 / .1); }
+    .comp { margin: 0; color: oklch(0.82 0.015 250); font-size: 14px; }
+    .opt { display: flex; gap: 12px; align-items: center; text-align: left; padding: 12px; border-radius: 14px; border: 1px solid oklch(0.42 0.025 250 / .5); background: oklch(0.12 0.01 250 / .6);
+      transition: border-color 260ms var(--ease-out), background 260ms, transform 200ms var(--ease-spring); }
+    .opt:hover:not(:disabled) { transform: translateY(-1px); }
+    .opt:active:not(:disabled) { transform: scale(.985); }
+    .opt:disabled { cursor: default; }
+    .opt.on { border-color: var(--lead); background: oklch(0.85 0.14 80 / .07); }
+    .opt .t { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .opt b { font-size: 15px; }
+    .opt .t span { font-size: 13px; color: var(--muted-1); line-height: 1.4; }
+    .sw { flex: none; width: 44px; height: 26px; border-radius: 999px; background: oklch(0.35 0.02 250); position: relative; transition: background 260ms; }
+    .sw i { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--ink); transition: transform 360ms var(--ease-spring); }
+    .opt.on .sw { background: var(--lead); }
+    .opt.on .sw i { transform: translateX(18px); }
+    .err { margin: 0; color: oklch(0.8 0.14 28); font-size: 14px; }
   `],
 })
 export class Lobby {
   protected readonly g = inject(GameService);
-  protected readonly sound = inject(SoundService);
+  protected readonly audio = inject(AudioService);
   protected readonly copied = signal(false);
   protected readonly room = computed(() => this.g.room()!);
-  protected readonly spies = computed(() => spyCount(this.g.players().length));
+  protected readonly n = computed(() => this.g.players().length);
+  protected readonly spies = computed(() => spyCount(this.n()));
   protected readonly defs: OptionDef[] = [
-    { key: 'merlin', title: 'Comandante + Assassino', text: 'O Comandante vê os espiões. Se a Resistência vencer 3 missões, o Assassino tenta achá-lo.' },
-    { key: 'percival', title: 'Vigia + Impostora', text: 'O Vigia vê o Comandante e a Impostora, sem saber qual é qual. Exige o Comandante.', needs: 'merlin' },
-    { key: 'mordred', title: 'Mordred', text: 'Espião invisível para o Comandante.' },
-    { key: 'oberon', title: 'Oberon', text: 'Espião isolado: não conhece os outros e não é conhecido por eles.' },
+    { key: 'merlin', role: 'merlin', title: 'Tech Lead + Headhunter', text: 'O Tech Lead vê os sabotadores. Se o time fechar 3 releases, o Headhunter tenta achá-lo.' },
+    { key: 'percival', role: 'percival', title: 'QA + Impostor', text: 'O QA vê o Tech Lead e o Impostor, sem saber qual é qual. Exige o Tech Lead.' },
+    { key: 'mordred', role: 'mordred', title: 'Zero-day', text: 'Sabotador invisível para o Tech Lead.' },
+    { key: 'oberon', role: 'oberon', title: 'Legado', text: 'Sabotador isolado: não conhece os outros e não é conhecido por eles.' },
   ];
   protected readonly optionError = computed(() => {
-    const o = this.room().options;
-    const n = this.g.players().length;
-    if (o.percival && !o.merlin) return 'O Vigia só funciona junto com o Comandante.';
+    const o = this.room().options, n = this.n();
+    if (o.percival && !o.merlin) return 'O QA só funciona junto com o Tech Lead.';
     const special = [o.merlin, o.percival, o.mordred, o.oberon].filter(Boolean).length;
     if (n >= 5 && special > spyCount(n)) return `Muitos papéis especiais para ${n} jogadores (máximo ${spyCount(n)}).`;
     return '';
   });
-  protected readonly canStart = computed(() => this.g.players().length >= 5 && !this.optionError());
+  protected readonly canStart = computed(() => this.n() >= 5 && !this.optionError());
 
-  protected toggle(key: keyof RoomOptions, value: boolean): void {
-    const next: RoomOptions = { ...this.room().options, [key]: value };
-    if (key === 'merlin' && !value) next.percival = false;
-    if (key === 'percival' && value) next.merlin = true;
+  private seen = new Set(this.g.players().map((p) => p.id));
+  constructor() {
+    // som quando alguém entra na sala
+    effect(() => {
+      const ids = this.g.players().map((p) => p.id);
+      untracked(() => {
+        if (ids.some((id) => !this.seen.has(id))) this.audio.select(ids.length % 6);
+        this.seen = new Set(ids);
+      });
+    });
+  }
+
+  protected hex(name: string): string { return sigil(name).hex; }
+
+  protected toggle(key: keyof RoomOptions): void {
+    const o = this.room().options, next: RoomOptions = { ...o, [key]: !o[key] };
+    if (key === 'merlin' && o.merlin) next.percival = false;
+    if (key === 'percival' && !o.percival) next.merlin = true;
+    this.audio.ui();
     void this.g.updateOptions(next);
   }
 
+  protected start(): void { this.audio.lock(); void this.g.start(); }
+
   protected async copy(): Promise<void> {
     const url = `${location.origin}${location.pathname}?sala=${this.room().code}`;
-    try { await navigator.clipboard.writeText(url); this.copied.set(true); setTimeout(() => this.copied.set(false), 2000); } catch { /* ignora */ }
+    try { await navigator.clipboard.writeText(url); this.audio.select(3); this.copied.set(true); setTimeout(() => this.copied.set(false), 2000); } catch { /* ignora */ }
   }
 }

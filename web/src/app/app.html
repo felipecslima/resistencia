@@ -1,29 +1,30 @@
-@if (!g.ready()) {
-  <main class="splash">
-    <div>
-      <h1>A Resistência</h1>
+<mc-fx-stage>
+  @if (!g.ready()) {
+    <main class="splash">
+      <mc-logo [size]="72" />
+      <h1>Merge <span>Conflict</span></h1>
       @if (g.connecting()) {
-        <p class="muted">Conectando…</p>
-        <div class="spinner"></div>
+        <p class="mono status" role="status">$ git fetch origin<span class="caret"></span></p>
+        <div class="spinner" aria-hidden="true"></div>
       } @else {
-        <p class="muted">Não foi possível conectar ao servidor.</p>
-        @if (g.initError(); as e) { <p class="muted"><code>{{ e }}</code></p> }
-        <p class="muted small">Confira se "Allow anonymous sign-ins" está ligado no Supabase.</p>
-        <button class="btn primary" (click)="g.init()">Tentar de novo</button>
+        <p class="mono status err" role="alert">fatal: não foi possível conectar ao servidor.</p>
+        @if (g.initError(); as e) { <code>{{ e }}</code> }
+        <p class="hint">Confira se "Allow anonymous sign-ins" está ligado no Supabase.</p>
+        <button class="mc-btn primary big" (click)="g.init()">Tentar de novo</button>
       }
-    </div>
-  </main>
-} @else if (!g.room()) {
-  <app-home />
-} @else if (g.room()!.phase === 'lobby') {
-  <app-lobby />
-} @else {
-  <app-game />
-}
+    </main>
+  } @else if (!g.room()) {
+    <app-home />
+  } @else if (g.room()!.phase === 'lobby') {
+    <app-lobby />
+  } @else {
+    <app-game />
+  }
+</mc-fx-stage>
 
 @if (g.error(); as err) {
   <div class="toast" role="alert">
-    <span>{{ err }}</span>
-    <button class="btn small ghost" (click)="g.dismissError()" aria-label="Fechar">✕</button>
+    <span>error: {{ err }}</span>
+    <button class="mc-btn ghost icon" (click)="g.dismissError()" aria-label="Fechar aviso">✕</button>
   </div>
 }

@@ -1,269 +1,174 @@
-<main class="wrap">
+<div class="sr-only" role="status" aria-live="polite">{{ live() }}</div>
+
+<div #shake class="game">
   <header class="top">
-    <div class="code-box">
-      <span class="muted small">Sala</span>
-      <b class="code">{{ room().code }}</b>
+    <div class="left">
+      <div class="code-box">
+        <span class="eyebrow">Sala</span>
+        <span class="code">{{ room().code }}</span>
+      </div>
+      <div class="deadline" role="img" [attr.aria-label]="'PRs recusados seguidos: ' + room().reject_count + ' de 5'" title="PRs recusados seguidos (5 = deadline estoura)">
+        <span class="eyebrow">Deadline · {{ room().reject_count }}/5</span>
+        <span class="dots">@for (d of rejectDots; track d) { <i [class.on]="d <= room().reject_count"></i> }</span>
+      </div>
     </div>
-
-    <div class="reject" [attr.aria-label]="'Equipes rejeitadas: ' + room().reject_count + ' de 5'" title="Equipes rejeitadas seguidas (5 = espiões vencem)">
-      <span class="muted small">Rejeições</span>
-      <span class="dots">
-        @for (d of rejectDots; track d) { <i [class.on]="d <= room().reject_count"></i> }
-      </span>
-    </div>
-
-    <div class="row">
-      @if (myRoleInfo(); as info) {
-        <button class="btn small role-btn" [class.good]="info.side === 'resistance'" [class.bad]="info.side === 'spies'" (click)="showRole.set(true)">
-          {{ info.icon }} {{ info.name }}
+    <div class="right">
+      @if (g.myRole()) {
+        <button class="mc-btn role-btn" [style.color]="mySide() === 'd' ? col.d : col.s" [style.border-color]="mySide() === 'd' ? col.d : col.s" (click)="openRole()" [attr.aria-label]="'Ver seu papel: ' + myRoleName()">
+          <mc-emblem [role]="myRole()" [size]="30" /><span>{{ myRoleName() }}</span>
         </button>
       }
-      <button class="btn small ghost" (click)="sound.toggle()" [attr.aria-label]="sound.muted() ? 'Ativar som' : 'Silenciar'">{{ sound.muted() ? '🔇' : '🔊' }}</button>
+      <button class="mc-btn icon" (click)="toggleAudio()" aria-label="Volume e som" [attr.aria-expanded]="audioOpen()">
+        <span class="stack"><mc-icon name="speaker" /><mc-icon [name]="audio.muted() ? 'mutedX' : 'waves'" /></span>
+      </button>
+      <button class="mc-btn icon" (click)="toggleFx()" [attr.aria-label]="fx.reduced() ? 'Efeitos: reduzido (mudar para completo)' : 'Efeitos: completo (mudar para reduzido)'" [attr.title]="fx.reduced() ? 'Efeitos: reduzido' : 'Efeitos: completo'">
+        <span class="stack" [class.off]="fx.reduced()"><mc-icon name="pulse" /><mc-icon name="slash" class="slash" /></span>
+      </button>
       @if (!confirmLeave()) {
-        <button class="btn small ghost" (click)="confirmLeave.set(true)">Sair</button>
+        <button class="mc-btn icon ghost danger" (click)="confirmLeave.set(true)" aria-label="Sair da mesa"><mc-icon name="exit" /></button>
       } @else {
-        <span class="row confirm">
-          <span class="small">{{ room().phase === 'finished' ? 'Sair da sala?' : 'Sair da tela? Você pode voltar.' }}</span>
-          <button class="btn small bad" (click)="leave()">Sim</button>
-          <button class="btn small" (click)="confirmLeave.set(false)">Não</button>
+        <span class="confirm" role="group" aria-label="Confirmar saída">
+          <span>{{ fin() ? 'Sair da sala?' : 'Sair? Dá para voltar.' }}</span>
+          <button class="mc-btn sab small" (click)="leave()">Sim</button>
+          <button class="mc-btn small" (click)="confirmLeave.set(false)">Não</button>
         </span>
+      }
+      @if (audioOpen()) {
+        <div class="pop" role="dialog" aria-label="Volume">
+          <label>Música · {{ (audio.music() * 100).toFixed(0) }}%<input type="range" min="0" max="100" [value]="audio.music() * 100" (input)="onMusic($event)" /></label>
+          <label>Efeitos · {{ (audio.sfx() * 100).toFixed(0) }}%<input type="range" min="0" max="100" [value]="audio.sfx() * 100" (change)="onSfx($event)" /></label>
+          <button class="mc-btn" (click)="audio.toggle()" [attr.aria-pressed]="audio.muted()">{{ audio.muted() ? 'Ativar som' : 'Silenciar tudo' }}</button>
+        </div>
       }
     </div>
   </header>
 
-  <ol class="track" aria-label="Missões">
-    @for (m of missionNumbers; track m) {
-      @let res = resultFor(m);
-      <li [class.current]="room().phase !== 'finished' && m === room().round && !res" [class.ok]="res?.success" [class.fail]="res && !res.success">
-        <span class="label">Missão {{ m }}</span>
-        <span class="circle">
-          @if (res) { {{ res.success ? '✓' : '✗' }} } @else { {{ g.sorted().length >= 5 ? teamSizeOf(m) : '' }} }
-        </span>
-        <span class="sub">
-          @if (res) {
-            {{ res.fails }} {{ res.fails === 1 ? 'falha' : 'falhas' }}
-          } @else if (m === 4 && n() >= 7) {
-            2 falhas
-          } @else {
-            &nbsp;
-          }
-        </span>
-      </li>
-    }
-  </ol>
+  <mc-release-pipeline [results]="visibleResults()" [round]="room().round" [n]="n()" [live]="!fin()" />
+
+  <section class="banner" [class.mine]="banner().mine">
+    <b [style.color]="banner().hc">{{ banner().head }}</b> {{ banner().text }}
+  </section>
 
   <div class="layout">
-    <div class="main stack">
-      <section class="banner" [class.mine]="myTurn()" aria-live="polite">
-        @switch (room().phase) {
-          @case ('team') {
-            @if (g.isLeader()) { <b>Sua vez de liderar!</b> Escolha {{ size() }} jogadores para a missão {{ room().round }}. }
-            @else { <b>{{ g.leader()?.name }}</b> está montando a equipe da missão {{ room().round }} ({{ size() }} jogadores). }
-          }
-          @case ('vote') { Todos votam na equipe proposta por <b>{{ g.leader()?.name }}</b>. }
-          @case ('mission') {
-            @if (onTeam()) { <b>Você está na missão!</b> Jogue sua carta em segredo. }
-            @else { A equipe está executando a missão em segredo… }
-          }
-          @case ('assassin') {
-            @if (isAssassin()) { <b>A Resistência venceu 3 missões…</b> mas você pode virar o jogo: aponte o Comandante! }
-            @else { A Resistência venceu 3 missões. O Assassino está escolhendo quem é o Comandante… }
-          }
-          @case ('finished') {
-            <b>{{ room().winner === 'resistance' ? 'A Resistência venceu!' : 'Os Espiões venceram!' }}</b> {{ room().win_reason }}.
-          }
-        }
-      </section>
+    <mc-round-table [seats]="seats()" [leaderIndex]="leaderIndex()" [hub]="hub()" [verdict]="verdict()" [wireWidth]="voteShow() || room().phase === 'vote' || room().phase === 'mission' ? 2.5 : 2" (pick)="toggle($event)" />
 
-      <section class="players" aria-label="Jogadores">
-        @for (p of g.sorted(); track p.id) {
-          @let label = g.known().get(p.id);
-          @let rr = revealRole(p.id);
-          <button type="button" class="pcard"
-            [class.leader]="room().phase !== 'finished' && p.seat === room().leader_seat"
-            [class.team]="room().team.includes(p.id) && (room().phase === 'vote' || room().phase === 'mission')"
-            [class.picked]="selection().has(p.id)"
-            [class.clickable]="selecting()"
-            [class.me]="p.id === myId()"
-            [class.off]="!g.online().has(p.id)"
-            [class.spy]="label === 'spy' || (rr && roles[rr].side === 'spies')"
-            [disabled]="!selecting() || (room().phase === 'assassin' && p.id === myId())"
-            (click)="toggle(p.id)">
-            <span class="avatar">{{ p.name.charAt(0).toUpperCase() }}<i class="dot" [class.on]="g.online().has(p.id)"></i></span>
-            <span class="pname">{{ p.name }}</span>
-            <span class="badges">
-              @if (room().phase !== 'finished' && p.seat === room().leader_seat) { <span class="chip gold" title="Líder">👑 Líder</span> }
-              @if (p.id === myId()) { <span class="chip">você</span> }
-              @if (room().team.includes(p.id) && (room().phase === 'vote' || room().phase === 'mission')) { <span class="chip good">Na equipe</span> }
-              @if (room().phase === 'vote' && room().voted.includes(p.id)) { <span class="chip">✓ votou</span> }
-              @if (room().phase === 'mission' && room().acted.includes(p.id)) { <span class="chip">✓ jogou</span> }
-              @if (label === 'spy') { <span class="chip bad">🗡️ Espião</span> }
-              @if (label === 'merlin?') { <span class="chip gold">👁️ Comandante?</span> }
-              @if (rr) { <span class="chip" [class.bad]="roles[rr].side === 'spies'" [class.good]="roles[rr].side === 'resistance'">{{ roles[rr].icon }} {{ roles[rr].name }}</span> }
-            </span>
-          </button>
-        }
-      </section>
-
-      <section class="panel action">
+    <div class="side">
+      <section class="mc-panel action">
         @switch (room().phase) {
           @case ('team') {
             @if (g.isLeader()) {
-              <h3>Monte a equipe ({{ selection().size }}/{{ size() }})</h3>
-              <p class="muted">Toque nos jogadores para escolher. Você pode se incluir.</p>
-              <button class="btn primary big" [disabled]="selection().size !== size() || g.busy()" (click)="propose()">Propor equipe</button>
+              <h3>Monte o PR ({{ selection().size }}/{{ size() }})</h3>
+              <p>Toque nos devs da mesa para marcar. Você pode se incluir.</p>
+              <button class="mc-btn primary big" [disabled]="selection().size !== size() || g.busy() || !selecting()" (click)="propose()"><mc-icon name="git" [stroke]="2.2" /> Abrir PR</button>
             } @else {
-              <h3>Aguardando o líder</h3>
-              <p class="muted">{{ g.leader()?.name }} vai propor {{ size() }} jogadores. Depois todos votam.</p>
+              <h3>Aguardando o lead</h3>
+              <p>{{ leaderName() }} vai marcar {{ size() }} devs. Depois todos fazem o review.</p>
             }
           }
           @case ('vote') {
-            <h3>Equipe proposta</h3>
-            <div class="row">
-              @for (id of room().team; track id) { <span class="chip good">{{ nameOf(id) }}</span> }
-            </div>
+            <h3>PR #{{ room().round }}.{{ attempt() }}</h3>
+            <div class="chips">@for (id of room().team; track id) { <span class="chip team">{{ nameOf(id) }}</span> }</div>
             @if (!hasVoted()) {
-              <div class="vote-btns">
-                <button class="btn good big" [disabled]="g.busy()" (click)="g.vote(true)">👍 Aprovar</button>
-                <button class="btn bad big" [disabled]="g.busy()" (click)="g.vote(false)">👎 Rejeitar</button>
+              <p>Approve ou peça mudanças. Os votos aparecem todos juntos.</p>
+              <div class="two">
+                <button class="mc-btn team" [disabled]="g.busy()" (click)="vote(true)">
+                  <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" /><path d="m7.5 12.5 3 3 6-6.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg>Approve
+                </button>
+                <button class="mc-btn sab" [disabled]="g.busy()" (click)="vote(false)">
+                  <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" /><path d="m9 9 6 6m0-6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" /></svg>Pedir mudanças
+                </button>
               </div>
             } @else {
-              <p class="muted">Voto registrado. Faltam {{ n() - room().voted.length }} jogador(es). Os votos são revelados juntos.</p>
+              <p>Review enviado. Faltam {{ n() - room().voted.length }} reviews.</p>
             }
           }
           @case ('mission') {
             @if (onTeam() && !hasActed()) {
-              <h3>Sua carta da missão</h3>
-              <div class="vote-btns">
-                <button class="btn good big" [disabled]="g.busy()" (click)="g.playMission(true)">✓ Sucesso</button>
-                @if (isEvil()) { <button class="btn bad big" [disabled]="g.busy()" (click)="g.playMission(false)">✗ Falha</button> }
+              <h3>Seu commit</h3>
+              <p>{{ mySide() === 'd' ? 'Devs só podem fazer commit limpo.' : 'Commit limpo ou bug plantado. Ninguém vê quem fez o quê.' }}{{ twoFails() ? ' Neste release são necessários 2 bugs para quebrar o build.' : '' }}</p>
+              <div class="two">
+                <button class="mc-btn team" [disabled]="g.busy()" (click)="commit(true)">
+                  <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" /><path d="m7.5 12.5 3 3 6-6.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg>Commit limpo
+                </button>
+                @if (mySide() === 's') {
+                  <button class="mc-btn sab" [disabled]="g.busy()" (click)="commit(false)">
+                    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" /><path d="m9 9 6 6m0-6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" /></svg>Plantar bug
+                  </button>
+                }
               </div>
-              @if (!isEvil()) { <p class="muted small">A Resistência só pode jogar Sucesso.</p> }
-              @if (twoFails()) { <p class="muted small">Nesta missão são necessárias 2 falhas para ela fracassar.</p> }
-            } @else if (onTeam()) {
-              <h3>Carta jogada</h3>
-              <p class="muted">Aguardando {{ size() - room().acted.length }} jogador(es) da equipe…</p>
             } @else {
-              <h3>Missão em andamento</h3>
-              <p class="muted">Equipe: {{ room().team.length }} jogadores. Aguardando as cartas…</p>
+              <h3>{{ onTeam() ? 'Commit enviado' : 'Build em andamento' }}</h3>
+              <p>Equipe de {{ room().team.length }}. Aguardando {{ room().team.length - room().acted.length }} commits…</p>
+              <div class="chips">@for (id of room().team; track id) { <span class="chip team">{{ nameOf(id) }}</span> }</div>
             }
           }
           @case ('assassin') {
             @if (isAssassin()) {
-              <h3>Quem é o Comandante?</h3>
-              <p class="muted">Escolha um jogador. Se acertar, os Espiões vencem.</p>
-              <button class="btn bad big" [disabled]="selection().size !== 1 || g.busy()" (click)="strike()">🎯 Apontar o Comandante</button>
+              <h3>Quem é o Tech Lead?</h3>
+              <p>Escolha um jogador na mesa. Se acertar, os sabotadores vencem.</p>
+              <button class="mc-btn sab" [disabled]="selection().size !== 1 || g.busy()" (click)="strike()">Fazer a proposta ao Tech Lead</button>
             } @else {
-              <h3>Última chance dos espiões</h3>
-              <p class="muted">Se o Assassino apontar o Comandante, a vitória muda de lado.</p>
+              <h3>Última chance dos sabotadores</h3>
+              <p>Se o Headhunter apontar o Tech Lead, a vitória muda de lado.</p>
             }
           }
           @case ('finished') {
-            <div class="end" [class.won]="iWon()" [class.lost]="!iWon()">
-              <h2>{{ iWon() ? 'Vitória!' : 'Derrota' }}</h2>
-              <p>{{ room().winner === 'resistance' ? 'A Resistência venceu' : 'Os Espiões venceram' }} — {{ room().win_reason }}.</p>
-            </div>
-            <div class="row">
+            <h3>{{ postMortem()?.won ? 'Vitória' : 'Derrota' }}</h3>
+            <p>{{ banner().text }}</p>
+            <div class="two">
               @if (g.isHost()) {
-                <button class="btn primary big" [disabled]="g.busy()" (click)="g.reset()">Jogar de novo</button>
+                <button class="mc-btn primary" [disabled]="g.busy()" (click)="replay()">Jogar de novo</button>
               } @else {
-                <span class="muted">Aguardando o anfitrião reiniciar…</span>
+                <span class="wait">Aguardando o host reiniciar…</span>
               }
-              <button class="btn" (click)="leave()">Sair da sala</button>
+              <button class="mc-btn" (click)="openEnd()">Ver post-mortem</button>
             </div>
           }
         }
       </section>
-    </div>
 
-    <aside class="side panel">
-      <div class="tabs" role="tablist">
-        <button role="tab" [attr.aria-selected]="tab() === 'chat'" [class.on]="tab() === 'chat'" (click)="setTab('chat')">
-          Chat @if (g.unread() > 0 && tab() !== 'chat') { <span class="badge">{{ g.unread() }}</span> }
-        </button>
-        <button role="tab" [attr.aria-selected]="tab() === 'votes'" [class.on]="tab() === 'votes'" (click)="setTab('votes')">Votos</button>
-        <button role="tab" [attr.aria-selected]="tab() === 'log'" [class.on]="tab() === 'log'" (click)="setTab('log')">Registro</button>
-      </div>
-
-      @switch (tab()) {
-        @case ('chat') { <app-chat [active]="tab() === 'chat'" /> }
-        @case ('votes') {
-          <div class="scroll">
-            @for (v of votesReversed(); track $index) {
-              <article class="vh" [class.ok]="v.approved" [class.no]="!v.approved">
-                <header>
-                  <b>Missão {{ v.round }} · tentativa {{ v.attempt }}</b>
-                  <span class="chip" [class.good]="v.approved" [class.bad]="!v.approved">{{ v.approved ? 'Aprovada' : 'Rejeitada' }} ({{ approvals(v) }}x{{ n() - approvals(v) }})</span>
-                </header>
-                <p class="small muted">Líder: {{ nameOf(v.leader) }} · Equipe: {{ teamNames(v) }}</p>
-                <div class="row">
-                  @for (e of voteEntries(v); track e.name) { <span class="chip" [class.good]="e.ok" [class.bad]="!e.ok">{{ e.name }} {{ e.ok ? '✓' : '✗' }}</span> }
-                </div>
-              </article>
-            } @empty { <p class="muted">Nenhuma votação ainda.</p> }
-          </div>
-        }
-        @case ('log') {
-          <ul class="scroll log">
-            @for (l of logReversed(); track $index) { <li>{{ l.m }}</li> }
-          </ul>
-        }
-      }
-    </aside>
-  </div>
-</main>
-
-@if (showRole() && myRoleInfo(); as info) {
-  <div class="overlay" (click)="showRole.set(false)" role="dialog" aria-label="Seu papel">
-    <div class="rolecard" [class.good]="info.side === 'resistance'" [class.bad]="info.side === 'spies'" (click)="$event.stopPropagation()">
-      <div class="flip">
-        <div class="icon">{{ info.icon }}</div>
-        <h2>{{ info.name }}</h2>
-        <span class="chip" [class.good]="info.side === 'resistance'" [class.bad]="info.side === 'spies'">{{ info.side === 'resistance' ? 'Resistência' : 'Espiões' }}</span>
-        <p>{{ info.blurb }}</p>
-        @if (knownList().length) {
-          <div class="known">
-            <div class="muted small">{{ g.myRole() === 'percival' ? 'Um deles é o Comandante:' : g.myRole() === 'merlin' ? 'Espiões que você enxerga:' : 'Seus aliados espiões:' }}</div>
-            <div class="row center">
-              @for (k of knownList(); track k.name) { <span class="chip" [class.bad]="k.label === 'spy'" [class.gold]="k.label === 'merlin?'">{{ k.name }}</span> }
-            </div>
-          </div>
-        }
-        <button class="btn primary" (click)="showRole.set(false)">Entendi — esconder</button>
-        <p class="muted small">Esconda a tela antes de mostrar para alguém.</p>
-      </div>
+      <section class="tabs-panel">
+        <div role="tablist" class="tabs">
+          <button role="tab" [attr.aria-selected]="tab() === 'reviews'" [class.on]="tab() === 'reviews'" (click)="setTab('reviews')">Reviews</button>
+          <button role="tab" [attr.aria-selected]="tab() === 'chat'" [class.on]="tab() === 'chat'" (click)="setTab('chat')">
+            Chat @if (g.unread() > 0 && tab() !== 'chat') { <span class="badge" [attr.aria-label]="g.unread() + ' novas'">{{ g.unread() }}</span> }
+          </button>
+          <button role="tab" [attr.aria-selected]="tab() === 'log'" [class.on]="tab() === 'log'" (click)="setTab('log')">Log</button>
+        </div>
+        <div class="tab-body" role="tabpanel">
+          @switch (tab()) {
+            @case ('chat') { <app-chat [active]="tab() === 'chat'" /> }
+            @case ('reviews') {
+              @for (h of reviews(); track $index) {
+                <article class="rev">
+                  <header><b>{{ h.title }}</b><span class="chip" [class.team]="h.approved" [class.sab]="!h.approved">{{ h.chip }}</span></header>
+                  <span class="sub">{{ h.sub }}</span>
+                  <div class="votes">@for (v of h.votes; track v.name) { <span [class.ok]="v.ok">{{ v.ok ? '✓' : '✗' }} {{ v.name }}</span> }</div>
+                </article>
+              } @empty { <p class="empty">Nenhum review ainda.</p> }
+            }
+            @case ('log') {
+              @for (l of logList(); track $index) { <div class="log"><span>{{ l.h }}</span> {{ l.m }}</div> }
+            }
+          }
+        </div>
+      </section>
     </div>
   </div>
-}
+</div>
 
-@if (voteReveal(); as v) {
-  <div class="overlay" (click)="voteReveal.set(null)" role="dialog" aria-label="Resultado da votação">
-    <div class="votecard" [class.good]="v.approved" [class.bad]="!v.approved" (click)="$event.stopPropagation()">
-      <h2>{{ v.approved ? 'Equipe aprovada' : 'Equipe rejeitada' }}</h2>
-      <p class="muted">{{ approvals(v) }} a favor · {{ n() - approvals(v) }} contra</p>
-      <div class="vgrid">
-        @for (e of voteEntries(v); track e.name; let i = $index) {
-          <div class="vchip" [class.ok]="e.ok" [class.no]="!e.ok" [style.animation-delay.ms]="i * 120">
-            <span>{{ e.ok ? '👍' : '👎' }}</span> {{ e.name }}
-          </div>
-        }
-      </div>
-      <button class="btn" (click)="voteReveal.set(null)">Continuar</button>
-    </div>
-  </div>
-}
-
-@if (missionReveal(); as mr) {
-  <div class="overlay" (click)="missionReveal.set(null)" role="dialog" aria-label="Resultado da missão">
-    <div class="votecard" [class.good]="mr.result.success" [class.bad]="!mr.result.success" (click)="$event.stopPropagation()">
-      <h2>Missão {{ mr.result.round }}: {{ mr.result.success ? 'SUCESSO' : 'FALHA' }}</h2>
-      <div class="cards">
-        @for (c of mr.cards; track $index; let i = $index) {
-          <div class="mcard" [class.ok]="c" [class.no]="!c" [style.animation-delay.ms]="300 + i * 450">{{ c ? '✓' : '✗' }}</div>
-        }
-      </div>
-      <p class="muted">{{ mr.result.fails }} {{ mr.result.fails === 1 ? 'carta de falha' : 'cartas de falha' }}</p>
-      <button class="btn" (click)="missionReveal.set(null)">Continuar</button>
-    </div>
-  </div>
+@switch (current()?.kind) {
+  @case ('opening') { <mc-opening [spies]="spies()" (deal)="onDeal()" /> }
+  @case ('role') {
+    <mc-holo-card [role]="myRole()" [known]="knownList()" [first]="$any(current()).first" (closed)="next()" />
+  }
+  @case ('build') {
+    @let b = $any(current());
+    <mc-build-reveal [result]="b.result" [cards]="b.cards" [twoFails]="n() >= 7 && b.result.round === 4" (closed)="buildClosed()" />
+  }
+  @case ('end') {
+    @if (postMortem(); as pm) {
+      <mc-post-mortem [vm]="pm" [host]="g.isHost()" [animate]="$any(current()).animate" (replay)="replay()" (leave)="leave()" (closed)="next()" />
+    }
+  }
 }

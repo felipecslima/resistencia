@@ -147,7 +147,11 @@ export class GameService {
     try { await this.rejoinLast(false); this.resumable.set(false); } finally { this.busy.set(false); }
   }
 
-  kick(playerId: string) { return this.rpc('kick_player', { p_room: this.rid(), p_player: playerId }); }
+  async kick(playerId: string): Promise<void> {
+    const ok = await this.rpc('kick_player', { p_room: this.rid(), p_player: playerId });
+    // não depende do realtime: o evento de DELETE pode não chegar
+    if (ok !== undefined) this.players.update((list) => list.filter((p) => p.id !== playerId));
+  }
   updateOptions(o: RoomOptions) { return this.rpc('update_options', { p_room: this.rid(), p_options: o }); }
   start() { return this.rpc('start_game', { p_room: this.rid() }); }
   reset() { return this.rpc('reset_room', { p_room: this.rid() }); }
@@ -256,8 +260,17 @@ export class GameService {
       if (payload.eventType === 'DELETE') { if ((payload.old as Partial<Room>).id === roomId) this.exitRoom(); return; }
       refreshRoom();
     });
-    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${roomId}` }, () => {
+    ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'players', filter: `room_id=eq.${roomId}` }, () => {
       if (live()) refreshPlayers();
+    });
+    ch.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'players', filter: `room_id=eq.${roomId}` }, () => {
+      if (live()) refreshPlayers();
+    });
+    // o Realtime não entrega DELETE com filtro (a linha apagada só traz a chave primária):
+    // escuta sem filtro e só reage se o jogador apagado é desta sala
+    ch.on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'players' }, (payload) => {
+      const id = (payload.old as { id?: string }).id;
+      if (live() && (!id || this.players().some((p) => p.id === id))) refreshPlayers();
     });
     ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${roomId}` }, (payload) => {
       if (!live()) return;

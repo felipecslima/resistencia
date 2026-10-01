@@ -2,7 +2,8 @@ import { Component, computed, effect, inject, signal, untracked } from '@angular
 import { GameService } from './game.service';
 import { AudioService } from './mc/audio.service';
 import { ChatPanel } from './chat-panel';
-import { RoleKey, RoomOptions, spyCount } from './models';
+import { RulesButton } from './rules';
+import { MIN_PLAYERS, MISSION_SIZES, RoleKey, RoomOptions, spyCount } from './models';
 import { Icon, RoleEmblem, Sigil } from './mc/ui';
 import { sigil } from './mc/theme';
 
@@ -10,7 +11,7 @@ interface OptionDef { key: keyof RoomOptions; role: RoleKey; title: string; text
 
 @Component({
   selector: 'app-lobby',
-  imports: [ChatPanel, Icon, RoleEmblem, Sigil],
+  imports: [ChatPanel, Icon, RoleEmblem, Sigil, RulesButton],
   template: `
     <main class="lobby">
       <header class="head">
@@ -19,6 +20,7 @@ interface OptionDef { key: keyof RoomOptions; role: RoleKey; title: string; text
           <span class="code">{{ room().code }}</span>
         </div>
         <div class="tools">
+          <app-rules-button [players]="n()" />
           <button class="mc-btn" (click)="copy()"><mc-icon name="link" [size]="18" /> {{ copied() ? 'Link copiado!' : 'Copiar convite' }}</button>
           <button class="mc-btn icon" (click)="audio.toggle()" [attr.aria-label]="audio.muted() ? 'Ativar som' : 'Silenciar'" [attr.aria-pressed]="audio.muted()">
             <span class="vol"><mc-icon name="speaker" /><mc-icon [name]="audio.muted() ? 'mutedX' : 'waves'" /></span>
@@ -31,7 +33,7 @@ interface OptionDef { key: keyof RoomOptions; role: RoleKey; title: string; text
         <section class="mc-panel">
           <div class="row">
             <h2 class="h-section">Contribuidores {{ n() }}/10</h2>
-            <span class="chip" [class.team]="n() >= 5" [class.sab]="n() < 5">{{ n() < 5 ? 'Faltam ' + (5 - n()) : 'Pronto para começar' }}</span>
+            <span class="chip" [class.team]="n() >= min" [class.sab]="n() < min">{{ n() < min ? 'Faltam ' + (min - n()) : 'Pronto para começar' }}</span>
           </div>
           <ul class="players">
             @for (p of g.sorted(); track p.id) {
@@ -52,7 +54,7 @@ interface OptionDef { key: keyof RoomOptions; role: RoleKey; title: string; text
               </li>
             }
           </ul>
-          <p class="comp">{{ n() >= 5 ? 'Com ' + n() + ' jogadores: ' + spies() + ' sabotadores e ' + (n() - spies()) + ' devs.' : 'Mínimo de 5 jogadores. Mande o convite.' }}</p>
+          <p class="comp">{{ n() >= min ? 'Com ' + n() + ' jogadores: ' + spies() + (spies() === 1 ? ' sabotador e ' : ' sabotadores e ') + (n() - spies()) + ' devs. Equipes: ' + sizes() + '.' : 'Mínimo de ' + min + ' jogadores. Mande o convite.' }}</p>
         </section>
 
         <section class="mc-panel">
@@ -124,7 +126,9 @@ export class Lobby {
   protected readonly copied = signal(false);
   protected readonly room = computed(() => this.g.room()!);
   protected readonly n = computed(() => this.g.players().length);
+  protected readonly min = MIN_PLAYERS;
   protected readonly spies = computed(() => spyCount(this.n()));
+  protected readonly sizes = computed(() => (MISSION_SIZES[Math.min(this.n(), 10)] ?? []).join(' · '));
   protected readonly defs: OptionDef[] = [
     { key: 'merlin', role: 'merlin', title: 'Tech Lead + Headhunter', text: 'O Tech Lead vê os sabotadores. Se o time fechar 3 releases, o Headhunter tenta achá-lo.' },
     { key: 'percival', role: 'percival', title: 'QA + Impostor', text: 'O QA vê o Tech Lead e o Impostor, sem saber qual é qual. Exige o Tech Lead.' },
@@ -135,10 +139,10 @@ export class Lobby {
     const o = this.room().options, n = this.n();
     if (o.percival && !o.merlin) return 'O QA só funciona junto com o Tech Lead.';
     const special = [o.merlin, o.percival, o.mordred, o.oberon].filter(Boolean).length;
-    if (n >= 5 && special > spyCount(n)) return `Muitos papéis especiais para ${n} jogadores (máximo ${spyCount(n)}).`;
+    if (n >= MIN_PLAYERS && special > spyCount(n)) return `Muitos papéis especiais para ${n} jogadores (máximo ${spyCount(n)}).`;
     return '';
   });
-  protected readonly canStart = computed(() => this.n() >= 5 && !this.optionError());
+  protected readonly canStart = computed(() => this.n() >= MIN_PLAYERS && !this.optionError());
 
   private seen = new Set(this.g.players().map((p) => p.id));
   constructor() {

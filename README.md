@@ -1,6 +1,6 @@
 # A Resistência — multiplayer em tempo real
 
-Jogo de dedução social (estilo The Resistance) para 5 a 10 jogadores.
+Jogo de dedução social (estilo The Resistance) para 4 a 10 jogadores.
 Angular 22 (standalone, zoneless, Signals) + Supabase (Auth anônimo, Postgres com RLS, Realtime).
 
 ## Passo obrigatório no Supabase
@@ -33,7 +33,7 @@ Link de convite: `http://localhost:4200/?sala=CODIGO`.
 
 ## Recursos
 
-Salas com código, lobby com chat, 5 a 10 jogadores, Comandante/Assassino, Vigia/Impostora, Mordred, Oberon,
+Salas com código, lobby com chat, 4 a 10 jogadores, Comandante/Assassino, Vigia/Impostora, Mordred, Oberon,
 histórico de votos, registro da partida, reconexão automática (volta para a sala ao recarregar), indicador online,
 animações de revelação, sons (sintetizados, sem arquivos) e aviso "Sua vez" no título da aba.
 

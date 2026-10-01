@@ -1,6 +1,7 @@
 import { Component, DestroyRef, ElementRef, afterNextRender, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
 import { GameService } from './game.service';
 import { ChatPanel } from './chat-panel';
+import { RulesButton } from './rules';
 import { MissionResult, RoleKey, VoteRecord, needsTwoFails, spyCount, teamSize } from './models';
 import { AudioService } from './mc/audio.service';
 import { FxService } from './mc/fx.service';
@@ -22,7 +23,7 @@ interface VoteShow { rec: VoteRecord; order: { id: string; ok: boolean }[]; step
 
 @Component({
   selector: 'app-game',
-  imports: [ChatPanel, RoundTable, ReleasePipeline, OpeningSequence, HoloCard, BuildReveal, PostMortem, Icon, RoleEmblem],
+  imports: [ChatPanel, RulesButton, RoundTable, ReleasePipeline, OpeningSequence, HoloCard, BuildReveal, PostMortem, Icon, RoleEmblem],
   templateUrl: './game.html',
   styleUrl: './game.scss',
 })

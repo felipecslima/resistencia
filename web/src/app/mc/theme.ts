@@ -121,7 +121,7 @@ export const reasonText = (r: string | null): string => (r ? (REASONS[r] ?? r) :
 /** Traduz as mensagens do registro (geradas no banco) para o vocabulário da interface. */
 export function logText(m: string): string {
   let x: RegExpMatchArray | null;
-  if ((x = m.match(/^A partida começou com (\d+) jogadores \((\d+) espiões\)\.$/))) return `git merge: ${x[1]} devs, ${x[2]} sabotadores no time.`;
+  if ((x = m.match(/^A partida começou com (\d+) jogadores \((\d+) espi(?:ões|ão)\)\.$/))) return `git merge: ${x[1]} devs, ${x[2]} ${x[2] === '1' ? 'sabotador' : 'sabotadores'} no time.`;
   if ((x = m.match(/^(.+) propôs a equipe: (.+)\.$/))) return `${x[1]} abriu o PR com ${x[2]}.`;
   if ((x = m.match(/^Votação: equipe (APROVADA|REJEITADA) \((\d+) a favor, (\d+) contra\)\.$/))) return `Code review: ${x[1] === 'APROVADA' ? 'PR aprovado' : 'mudanças pedidas'} (${x[2]} approve, ${x[3]} changes).`;
   if ((x = m.match(/^Missão (\d+): (FALHOU|SUCESSO) \((\d+) carta\(s\) de falha\)\.$/))) return `Build do release ${x[1]}: ${x[2] === 'SUCESSO' ? 'verde' : 'quebrado'} (${x[3]} ${x[3] === '1' ? 'bug' : 'bugs'}).`;

@@ -1,5 +1,7 @@
 <mc-fx-stage>
-  @if (!g.ready()) {
+  @if (!access.unlocked()) {
+    <app-gate />
+  } @else if (!g.ready()) {
     <main class="splash">
       <mc-logo [size]="72" />
       <h1>Merge <span>Conflict</span></h1>

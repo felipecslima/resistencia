@@ -1,5 +1,7 @@
 import { Component, effect, inject, untracked } from '@angular/core';
 import { GameService } from './game.service';
+import { AccessService } from './access.service';
+import { Gate } from './gate';
 import { AudioService } from './mc/audio.service';
 import { FxService } from './mc/fx.service';
 import { FxStage } from './mc/fx-stage';
@@ -10,18 +12,20 @@ import { Game } from './game';
 
 @Component({
   selector: 'app-root',
-  imports: [FxStage, Logo, Home, Lobby, Game],
+  imports: [FxStage, Logo, Gate, Home, Lobby, Game],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
 export class App {
   protected readonly g = inject(GameService);
+  protected readonly access = inject(AccessService);
   private readonly audio = inject(AudioService);
   private readonly fx = inject(FxService);
   private lastMsg = 0;
 
   constructor() {
-    void this.g.init();
+    // só conecta ao Supabase depois que a senha de acesso for validada
+    effect(() => { if (this.access.unlocked()) untracked(() => void this.g.init()); });
     // som de chat para mensagens de outros jogadores
     effect(() => {
       const list = this.g.messages();

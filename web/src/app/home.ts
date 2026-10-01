@@ -4,10 +4,11 @@ import { GameService } from './game.service';
 import { AudioService } from './mc/audio.service';
 import { FxService } from './mc/fx.service';
 import { Icon, Logo } from './mc/ui';
+import { Rules } from './rules';
 
 @Component({
   selector: 'app-home',
-  imports: [FormsModule, Logo, Icon],
+  imports: [FormsModule, Logo, Icon, Rules],
   template: `
     <main class="home">
       <header>
@@ -16,7 +17,7 @@ import { Icon, Logo } from './mc/ui';
           <span class="m">Merge</span>
           <span class="c">Conflict</span>
         </h1>
-        <p>Dedução social em tempo real para 5 a 10 devs. Alguém no time está plantando bugs. Descubra quem antes do deploy.</p>
+        <p>Dedução social em tempo real para 4 a 10 devs. Alguém no time está plantando bugs. Descubra quem antes do deploy.</p>
       </header>
 
       <section class="mc-panel">
@@ -44,16 +45,11 @@ import { Icon, Logo } from './mc/ui';
 
       <section class="rules">
         <button class="rules-toggle" (click)="toggleRules()" [attr.aria-expanded]="showRules()">
-          <span>README · Como jogar</span>
+          <span>README · Regras e modos</span>
           <span class="plus" [class.open]="showRules()"><mc-icon name="plus" [size]="18" /></span>
         </button>
         @if (showRules()) {
-          <div class="rules-body">
-            <p>Cada jogador recebe em segredo um papel: <b>Dev</b> ou <b>Sabotador</b>. Os sabotadores se conhecem; os devs não sabem quem é quem.</p>
-            <p>O jogo tem até 5 releases. A cada rodada o <b>lead</b> abre um PR com uma equipe e todos fazem o code review (maioria aprova). Se 5 PRs seguidos forem recusados, o deadline estoura e os sabotadores vencem.</p>
-            <p>Com o PR aprovado, cada membro faz um commit em segredo: devs só fazem <b>commit limpo</b>, sabotadores escolhem entre limpo e <b>plantar um bug</b>. Um único bug quebra o build (no release 4 com 7+ jogadores são necessários 2 bugs).</p>
-            <p>Quem fechar 3 releases vence. Com o <b>Tech Lead</b> ligado, se os devs vencerem, o <b>Headhunter</b> ainda pode apontar o Tech Lead para roubar a vitória.</p>
-          </div>
+          <app-rules />
         }
       </section>
     </main>
@@ -79,8 +75,7 @@ import { Icon, Logo } from './mc/ui';
     .rules-toggle > span:first-child { font-family: var(--display); font-variation-settings: 'wdth' 120, 'wght' 700; letter-spacing: .16em; text-transform: uppercase; font-size: 13px; }
     .plus { display: grid; transition: transform 340ms var(--ease-spring); }
     .plus.open { transform: rotate(45deg); }
-    .rules-body { padding: 0 18px 12px; color: oklch(0.87 0.012 250); font-size: 15px; line-height: 1.55; text-wrap: pretty; }
-    .rules-body p { margin: 0 0 12px; }
+    app-rules { max-height: 70dvh; border-top: 1px solid oklch(0.42 0.025 250 / .45); }
   `],
 })
 export class Home {

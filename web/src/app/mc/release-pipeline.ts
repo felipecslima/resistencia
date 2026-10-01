@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { MissionResult, needsTwoFails, teamSize } from '../models';
+import { MIN_PLAYERS, MissionResult, needsTwoFails, teamSize } from '../models';
 import { COL, ICON } from './theme';
 
 interface Stage {
@@ -59,7 +59,7 @@ export class ReleasePipeline {
       const res = rs.find((x) => x.round === m), nx = rs.find((x) => x.round === m + 1);
       const cur = !res && m === this.round() && this.live();
       const col = res ? (res.success ? COL.d : COL.s) : cur ? COL.a : 'oklch(0.45 0.02 250)';
-      const size = n >= 5 ? teamSize(n, m) : 0;
+      const size = n >= MIN_PLAYERS ? teamSize(n, m) : 0;
       const segC = res && nx ? (nx.success ? COL.d : COL.s) : 'oklch(0.35 0.02 250)';
       return {
         m, res, cur, col, txt: size ? String(size) : '', last: m === 5,

@@ -67,7 +67,12 @@ export const ROLES: Record<RoleKey, RoleInfo> = {
   oberon: { name: 'Oberon', side: 'spies', icon: '🌑', blurb: 'Espião isolado: você não conhece os outros espiões e eles não conhecem você.' },
 };
 
+export const MIN_PLAYERS = 4;
+export const MAX_PLAYERS = 10;
+
+/** Tamanho das equipes por rodada. Deve bater com `_team_size` no banco (supabase/003). */
 export const MISSION_SIZES: Record<number, number[]> = {
+  4: [2, 2, 3, 3, 3],
   5: [2, 3, 2, 3, 3],
   6: [2, 3, 4, 3, 4],
   7: [2, 3, 3, 4, 4],
@@ -76,6 +81,6 @@ export const MISSION_SIZES: Record<number, number[]> = {
   10: [3, 4, 4, 5, 5],
 };
 
-export function spyCount(n: number): number { return n <= 6 ? 2 : n <= 9 ? 3 : 4; }
-export function teamSize(n: number, round: number): number { return (MISSION_SIZES[Math.min(Math.max(n, 5), 10)])[round - 1]; }
+export function spyCount(n: number): number { return n <= 4 ? 1 : n <= 6 ? 2 : n <= 9 ? 3 : 4; }
+export function teamSize(n: number, round: number): number { return (MISSION_SIZES[Math.min(Math.max(n, MIN_PLAYERS), MAX_PLAYERS)])[round - 1]; }
 export function needsTwoFails(n: number, round: number): boolean { return n >= 7 && round === 4; }

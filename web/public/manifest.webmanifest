@@ -1,7 +1,7 @@
 {
   "name": "Merge Conflict",
   "short_name": "Merge Conflict",
-  "description": "Dedução social em tempo real para 5 a 10 devs. Alguém no time está plantando bugs.",
+  "description": "Dedução social em tempo real para 4 a 10 devs. Alguém no time está plantando bugs.",
   "lang": "pt-BR",
   "start_url": "/",
   "display": "standalone",

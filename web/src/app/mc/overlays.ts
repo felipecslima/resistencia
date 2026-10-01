@@ -147,18 +147,32 @@ export class HoloCard {
         addEventListener('deviceorientation', this.onOri);
       }
     });
-    inject(DestroyRef).onDestroy(() => this.onOri && removeEventListener('deviceorientation', this.onOri));
+    inject(DestroyRef).onDestroy(() => { cancelAnimationFrame(this.tiltRaf); if (this.onOri) removeEventListener('deviceorientation', this.onOri); });
   }
+
+  // ponteiro e giroscópio disparam várias vezes por quadro: guarda o último valor e aplica uma vez por frame
+  private tiltRaf = 0;
+  private pending: { px: number; py: number } | { cx: number; cy: number } | null = null;
 
   protected onTilt(e: PointerEvent): void {
     if (!this.fx.full() || (e.pointerType === 'touch' && !e.isPrimary)) return;
-    const r = this.tilt().nativeElement.getBoundingClientRect();
-    this.setTilt(clamp((e.clientX - r.left) / r.width), clamp((e.clientY - r.top) / r.height));
+    this.queueTilt({ cx: e.clientX, cy: e.clientY });
   }
-  protected setTilt(px: number, py: number): void {
-    const s = this.tilt().nativeElement.style;
-    s.setProperty('--rx', `${(0.5 - py) * 18}deg`); s.setProperty('--ry', `${(px - 0.5) * 24}deg`);
-    s.setProperty('--mx', `${px * 100}%`); s.setProperty('--my', `${py * 100}%`);
+  protected setTilt(px: number, py: number): void { this.queueTilt({ px, py }); }
+
+  private queueTilt(p: NonNullable<HoloCard['pending']>): void {
+    this.pending = p;
+    this.tiltRaf ||= requestAnimationFrame(() => {
+      this.tiltRaf = 0;
+      const v = this.pending, el = this.tilt().nativeElement;
+      if (!v) return;
+      let px: number, py: number;
+      if ('cx' in v) { const r = el.getBoundingClientRect(); px = clamp((v.cx - r.left) / r.width); py = clamp((v.cy - r.top) / r.height); }
+      else { px = v.px; py = v.py; }
+      const s = el.style;
+      s.setProperty('--rx', `${(0.5 - py) * 18}deg`); s.setProperty('--ry', `${(px - 0.5) * 24}deg`);
+      s.setProperty('--mx', `${px * 100}%`); s.setProperty('--my', `${py * 100}%`);
+    });
   }
 }
 const clamp = (v: number) => Math.max(0, Math.min(1, v));

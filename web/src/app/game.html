@@ -30,6 +30,9 @@
         <span class="confirm" role="group" aria-label="Confirmar saída">
           <span>{{ fin() ? 'Sair da sala?' : 'Sair? Dá para voltar.' }}</span>
           <button class="mc-btn sab small" (click)="leave()">Sim</button>
+          @if (g.isHost() && !fin()) {
+            <button class="mc-btn small" [disabled]="g.busy()" (click)="abort()" title="Encerra a partida e leva todos de volta ao lobby (use se alguém caiu)">Encerrar partida</button>
+          }
           <button class="mc-btn small" (click)="confirmLeave.set(false)">Não</button>
         </span>
       }

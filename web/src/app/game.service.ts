@@ -4,6 +4,7 @@ import { SUPABASE_KEY, SUPABASE_URL } from './supabase.config';
 import { ChatMessage, MyView, Player, Room, RoomOptions } from './models';
 
 const DEFAULT_OPTIONS: RoomOptions = { merlin: true, percival: false, mordred: false, oberon: false };
+const LAST_ROOM_KEY = 'resistencia.room';
 
 @Injectable({ providedIn: 'root' })
 export class GameService {
@@ -12,6 +13,8 @@ export class GameService {
   });
   private channel: RealtimeChannel | null = null;
   private errorTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Muda a cada entrada/saída de sala: respostas assíncronas de uma sala antiga são descartadas. */
+  private epoch = 0;
 
   readonly ready = signal(false);
   readonly initError = signal<string | null>(null);
@@ -81,11 +84,26 @@ export class GameService {
     }
   }
 
-  private async rejoinLast(): Promise<void> {
-    const { data } = await this.sb.from('rooms').select('*').neq('phase', 'finished')
-      .order('created_at', { ascending: false }).limit(1);
-    const r = (data as Room[] | null)?.[0];
-    if (r) await this.enterRoom(r.id);
+  /** Volta para a sala do convite (se já sou membro), senão para a última sala usada. */
+  private async rejoinLast(useInvite = true): Promise<void> {
+    const { data } = await this.sb.from('rooms').select('id, code').neq('phase', 'finished')
+      .order('created_at', { ascending: false }).limit(20);
+    const rooms = (data as Pick<Room, 'id' | 'code'>[] | null) ?? [];
+    if (!rooms.length) return;
+    const invite = useInvite ? (new URLSearchParams(location.search).get('sala')?.toUpperCase().slice(0, 5) ?? '') : '';
+    if (invite) {
+      // convite para outra sala: fica na home com o código preenchido, mas dá para voltar
+      const r = rooms.find((x) => x.code === invite);
+      if (r) await this.enterRoom(r.id); else this.resumable.set(true);
+      return;
+    }
+    const last = this.lastRoom();
+    await this.enterRoom((rooms.find((x) => x.id === last) ?? rooms[0]).id);
+  }
+
+  private lastRoom(): string | null { try { return localStorage.getItem(LAST_ROOM_KEY); } catch { return null; } }
+  private saveLastRoom(id: string | null): void {
+    try { if (id) localStorage.setItem(LAST_ROOM_KEY, id); else localStorage.removeItem(LAST_ROOM_KEY); } catch { /* ignora */ }
   }
 
   // ---------- ações ----------
@@ -106,6 +124,7 @@ export class GameService {
       const ok = await this.rpc('leave_room', { p_room: r.id });
       if (ok === undefined) return;
       this.resumable.set(false);
+      this.saveLastRoom(null);
     } else {
       this.resumable.set(true);
     }
@@ -114,8 +133,7 @@ export class GameService {
 
   /** Sai da tela sem deixar a sala (útil durante a partida: dá para voltar). */
   exitRoom(): void {
-    void this.channel?.unsubscribe();
-    this.channel = null;
+    this.dropChannel();
     this.room.set(null);
     this.players.set([]);
     this.messages.set([]);
@@ -126,7 +144,7 @@ export class GameService {
 
   async resume(): Promise<void> {
     this.busy.set(true);
-    try { await this.rejoinLast(); this.resumable.set(false); } finally { this.busy.set(false); }
+    try { await this.rejoinLast(false); this.resumable.set(false); } finally { this.busy.set(false); }
   }
 
   kick(playerId: string) { return this.rpc('kick_player', { p_room: this.rid(), p_player: playerId }); }
@@ -167,65 +185,108 @@ export class GameService {
     this.errorTimer = setTimeout(() => this.error.set(null), 6000);
   }
 
+  private dropChannel(): void {
+    this.epoch++;
+    if (this.channel) void this.sb.removeChannel(this.channel);
+    this.channel = null;
+  }
+
   private async enterRoom(roomId: string): Promise<void> {
-    void this.channel?.unsubscribe();
+    this.dropChannel();
     this.room.set(null);
     this.players.set([]);
     this.messages.set([]);
     this.unread.set(0);
+    const epoch = this.epoch;
     await this.syncAll(roomId);
-    if (!this.room()) return;
+    if (epoch !== this.epoch || !this.room()) return;
+    this.saveLastRoom(roomId);
     this.subscribe(roomId);
   }
 
   private async syncAll(roomId: string): Promise<void> {
+    const epoch = this.epoch;
     const [r, p, m] = await Promise.all([
       this.sb.from('rooms').select('*').eq('id', roomId).maybeSingle(),
       this.sb.from('players').select('*').eq('room_id', roomId),
-      this.sb.from('messages').select('*').eq('room_id', roomId).order('id', { ascending: true }).limit(200),
+      // as 200 mais recentes, exibidas em ordem cronológica
+      this.sb.from('messages').select('*').eq('room_id', roomId).order('id', { ascending: false }).limit(200),
     ]);
+    if (epoch !== this.epoch) return;
     if (r.error) return this.fail(r.error);
     if (!r.data) { this.exitRoom(); return; }
     this.room.set(r.data as Room);
     this.players.set((p.data as Player[]) ?? []);
-    this.messages.set((m.data as ChatMessage[]) ?? []);
+    this.messages.set(((m.data as ChatMessage[]) ?? []).reverse());
+  }
+
+  /** Agrupa rajadas de eventos: no máximo uma busca em andamento e uma na fila. */
+  private coalesce(fn: () => Promise<void>): () => void {
+    let running = false, dirty = false;
+    return () => {
+      if (running) { dirty = true; return; }
+      running = true;
+      void (async () => {
+        try { do { dirty = false; await fn(); } while (dirty); } finally { running = false; }
+      })();
+    };
   }
 
   private subscribe(roomId: string): void {
     const myPlayer = this.me();
     const ch = this.sb.channel(`room:${roomId}`, { config: { presence: { key: myPlayer?.id ?? this.userId() ?? 'anon' } } });
-    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => {
-      if (payload.eventType === 'DELETE') { this.exitRoom(); return; }
-      this.room.set(payload.new as Room);
+    this.channel = ch;
+    const live = () => this.channel === ch;
+    // o payload do realtime pode vir sem colunas grandes (TOAST) que não mudaram: sempre rebusca a linha
+    const refreshRoom = this.coalesce(async () => {
+      const { data, error } = await this.sb.from('rooms').select('*').eq('id', roomId).maybeSingle();
+      if (!live() || error) return;
+      if (data) this.room.set(data as Room); else this.exitRoom();
     });
-    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${roomId}` }, async () => {
+    const refreshPlayers = this.coalesce(async () => {
       const { data } = await this.sb.from('players').select('*').eq('room_id', roomId);
-      if (data) this.players.set(data as Player[]);
+      if (!live() || !data) return;
+      this.players.set(data as Player[]);
       // fui removido da sala?
-      if (data && !data.some((p: Player) => p.user_id === this.userId())) this.exitRoom();
+      if (!data.some((p: Player) => p.user_id === this.userId())) this.exitRoom();
+    });
+    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => {
+      if (!live()) return;
+      // DELETE não respeita o filtro: chega para qualquer sala apagada
+      if (payload.eventType === 'DELETE') { if ((payload.old as Partial<Room>).id === roomId) this.exitRoom(); return; }
+      refreshRoom();
+    });
+    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${roomId}` }, () => {
+      if (live()) refreshPlayers();
     });
     ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${roomId}` }, (payload) => {
+      if (!live()) return;
       const msg = payload.new as ChatMessage;
       this.messages.update((list) => (list.some((x) => x.id === msg.id) ? list : [...list, msg]));
       if (msg.player_id !== this.me()?.id) this.unread.update((n) => n + 1);
     });
     ch.on('presence', { event: 'sync' }, () => {
-      this.online.set(new Set(Object.keys(ch.presenceState())));
+      if (live()) this.online.set(new Set(Object.keys(ch.presenceState())));
     });
     ch.subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        await ch.track({ at: Date.now() });
-        await this.syncAll(roomId); // garante estado correto após (re)conexão
-        const r = this.room();
-        if (r && r.phase !== 'lobby') void this.loadView(roomId);
-      }
+      if (status !== 'SUBSCRIBED' || !live()) return;
+      await ch.track({ at: Date.now() });
+      if (!live()) return;
+      await this.syncAll(roomId); // garante estado correto após (re)conexão
+      if (!live()) return;
+      const r = this.room();
+      if (r && r.phase !== 'lobby') void this.loadView(roomId);
     });
-    this.channel = ch;
   }
 
   private async loadView(roomId: string): Promise<void> {
-    const { data, error } = await this.sb.rpc('get_my_view', { p_room: roomId });
-    if (error) return;
-    if (this.room()?.id === roomId) this.view.set(data as MyView);
+    const wanted = () => { const r = this.room(); return r?.id === roomId && r.phase !== 'lobby'; };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt) await new Promise((res) => setTimeout(res, 800 * attempt));
+      if (!wanted()) return;
+      const { data, error } = await this.sb.rpc('get_my_view', { p_room: roomId });
+      if (!error) { if (wanted()) this.view.set(data as MyView); return; }
+    }
+    if (wanted()) this.fail(null, 'Não foi possível carregar seu papel. Recarregue a página.');
   }
 }
